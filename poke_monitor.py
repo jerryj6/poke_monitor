@@ -1047,15 +1047,15 @@ async def on_ready():
     
     # Sync command tree
     try:
+        # Clear guild-specific command copies to remove duplicates
+        for guild in bot.guilds:
+            bot.tree.clear_commands(guild=guild)
+            await bot.tree.sync(guild=guild)
+            print(f"[Discord] Cleared guild-specific commands for: {guild.name} ({guild.id})")
+            
         # Sync globally
         synced = await bot.tree.sync()
         print(f"[Discord] Synced {len(synced)} slash commands globally.")
-        
-        # Copy global commands to all guilds the bot is currently in for instant availability
-        for guild in bot.guilds:
-            bot.tree.copy_global_to(guild=guild)
-            await bot.tree.sync(guild=guild)
-            print(f"[Discord] Synced command tree for guild: {guild.name} ({guild.id})")
     except Exception as e:
         print(f"[Discord] Slash command sync failed: {e}", file=sys.stderr)
 
