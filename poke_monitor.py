@@ -325,10 +325,11 @@ def save_state_to_discord(config, state_dict, old_msg_id=None):
         print("[State] Uploaded canonical state to Discord")
 
         if old_msg_id:
+            print(f"[State] Deleting old state message: {old_msg_id}")
             del_url = f"https://discord.com/api/v10/channels/{config.discord_state_channel_id}/messages/{old_msg_id}"
             del_status, del_body = make_request(del_url, method="DELETE", auth_header=auth)
             if del_status not in [200, 204]:
-                print(f"[State] Deletion of old state message failed: HTTP {del_status}", file=sys.stderr)
+                print(f"[State] Deletion of old state message {old_msg_id} failed: HTTP {del_status} - {del_body}", file=sys.stderr)
 
         return new_msg_id
     except Exception as e:
@@ -1046,8 +1047,15 @@ async def on_ready():
     
     # Sync command tree
     try:
+        # Sync globally
         synced = await bot.tree.sync()
-        print(f"[Discord] Synced {len(synced)} slash commands.")
+        print(f"[Discord] Synced {len(synced)} slash commands globally.")
+        
+        # Copy global commands to all guilds the bot is currently in for instant availability
+        for guild in bot.guilds:
+            bot.tree.copy_global_to(guild=guild)
+            await bot.tree.sync(guild=guild)
+            print(f"[Discord] Synced command tree for guild: {guild.name} ({guild.id})")
     except Exception as e:
         print(f"[Discord] Slash command sync failed: {e}", file=sys.stderr)
 
@@ -1310,6 +1318,17 @@ def main():
             else:
                 print("[State] Discord confirmed empty and no local state cache exists. Initializing fresh state.")
                 state = init_fresh_state()
+                
+                # Fetch initial flags to avoid duplicate state posts at startup
+                try:
+                    print("[State] Fetching initial flags for fresh state setup...")
+                    status, body = fetch_feature_flags_data(config_instance)
+                    if status == 200:
+                        res_json = json.loads(body)
+                        state["last_flags"] = res_json.get("flags", {})
+                except Exception as flag_err:
+                    print(f"[State] Warning: Failed to fetch initial flags during setup: {flag_err}", file=sys.stderr)
+
                 canonical_msg_id = save_state_to_discord(config_instance, state)
                 with health_lock:
                     health_status["stateSource"] = "initialized"
@@ -1344,6 +1363,17 @@ def main():
                             health_status["remoteStateAvailable"] = True
                     else:
                         state = init_fresh_state()
+                        
+                        # Fetch initial flags to avoid duplicate state posts
+                        try:
+                            print("[State] Fetching initial flags for fresh state setup...")
+                            status, body = fetch_feature_flags_data(config_instance)
+                            if status == 200:
+                                res_json = json.loads(body)
+                                state["last_flags"] = res_json.get("flags", {})
+                        except Exception as flag_err:
+                            print(f"[State] Warning: Failed to fetch initial flags during setup: {flag_err}", file=sys.stderr)
+
                         canonical_msg_id = save_state_to_discord(config_instance, state)
                         with health_lock:
                             health_status["stateSource"] = "initialized"
