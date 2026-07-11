@@ -1,0 +1,9 @@
+.env
+config.json
+state.json
+*.tmp
+__pycache__/
+*.pyc
+.DS_Store
+stderr.log
+stdout.log
