@@ -1,119 +1,73 @@
-# Poke.com Monitor 🌴
+# Poke.com Combined Monitor & Changelog Bot 🌴
 
-A production-grade, Render-compatible backend application that monitors feature flags and API credit consumption for Poke.com. It is designed to run persistently in the cloud, handle macOS-free environments, and maintain authoritative, permanent state storage inside a private Discord channel.
+A production-grade, Render-compatible unified service that combines feature flag monitoring, credit usage warnings, and a Discord changelog announcement forwarder into a single Python application using `discord.py`.
 
 ---
 
 ## Deployment Architecture
 
-The service runs as a concurrent Python application:
-1. **Flask Web Server**: Binds to `0.0.0.0` at the port specified in the `PORT` environment variable (default `10000`). It exposes health checks (`/` and `/health`) for uptime monitoring (e.g., UptimeRobot).
-2. **Scheduler Thread**: An internal loop running in a background daemon thread that controls periodic execution tasks using independent monotonic deadlines.
+The service runs as a concurrent application:
+1. **Discord Bot (`discord.py`)**: Runs on the main thread, maintaining a persistent WebSocket connection to the Discord Gateway to receive events (like webhook announcements) and register/respond to Slash Commands.
+2. **Flask Web Server**: Binds to `0.0.0.0` at the port specified in `PORT` (default `10000`). Exposes endpoints `/` and `/health` for uptime monitors (e.g. UptimeRobot) to query.
+3. **Background Tasks**: Managed via `discord.ext.tasks` running non-blocking intervals on the main event loop, utilizing `asyncio.to_thread` for synchronous network fetches.
 
 ---
 
-## State Persistence Strategy
+## Combined Features
 
-This application does not rely on local persistent disks, which are transient on free-tier cloud platforms like Render. It uses three layers of state:
+### 1. Changelog Webhook Forwarding (Optional)
+If `SOURCE_CHANNEL_ID` is configured:
+- The bot listens for incoming webhook messages in the source channel.
+- It automatically forwards the content, embeds, and file attachments to `DESTINATION_CHANNEL_ID` (which defaults to the source channel if omitted).
+- Upon successful forwarding, it deletes the original webhook message.
+- Can be toggled on/off interactively using `/changelog <enable|disable>` (persisted in state).
 
-1. **Discord State Message (Authoritative, Permanent)**:
-   - Stored as a message in a private Discord channel matching the `STATE_MARKER` (default: `POKE_MONITOR_STATE_V2`).
-   - The message contains a file attachment `state.json`.
-   - On startup, the application queries Discord channel history, downloads the attachment, validates its structure, and populates the in-memory state.
-   - Updates are crash-safe: a new message with the attachment is uploaded, and upon successful upload confirmation, the old message is deleted.
-2. **In-Memory State (Active)**:
-   - Held in memory during runtime to prevent excessive Discord API calls.
-3. **Local State Cache (Temporary)**:
-   - Written atomically using `tempfile + os.replace` to `state.json`.
-   - Used only as a fallback if Discord is temporarily unreachable at startup.
+### 2. Interactive Slash Commands
+- `/balance`: Instantly queries the Poke API and replies with the current weekly usage percentage and progress bar.
+- `/flags`: Instantly checks for Poke feature flag updates, publishes changes to your flag webhook channel, and replies with a status summary.
+- `/changelog <enable|disable>`: Toggles the forwarding feature.
 
----
-
-## Periodic Schedules
-
-- **Poke Feature Flags**: Sampled every 5 minutes (`FLAGS_CHECK_INTERVAL_SECONDS=300`).
-- **Weekly Credit Usage**: Sampled every 1 minute (`USAGE_SAMPLE_INTERVAL_SECONDS=60`).
-- **Routine Balance Embed**: Sent to Discord credit webhook every 15 minutes (`USAGE_NOTIFICATION_INTERVAL_SECONDS=900`). To prevent duplicate HTTP requests, it is processed during the 1-minute usage sampling task.
+### 3. Background Monitoring
+- Checks feature flags every 5 minutes (`FLAGS_CHECK_INTERVAL_SECONDS=300`).
+- Samples weekly credit usage every 1 minute (`USAGE_SAMPLE_INTERVAL_SECONDS=60`).
+- Publishes routine balance embeds every 15 minutes (`USAGE_NOTIFICATION_INTERVAL_SECONDS=900`).
 
 ---
 
-## Velocity Warnings & Cooldown
+## Velocity Warnings & Cooldowns
 
-The monitor calculates usage velocity (in percentage points per minute) over a rolling 10-minute window (`USAGE_RECENT_WINDOW_SECONDS=600`).
-
-### Warning Thresholds
-Exactly **one warning type** is sent to the credit webhook when weekly usage increases rapidly:
-- **Title**: `⚠️ Poke Usage Rising Quickly`
-- **Rate Threshold**: `0.125 pp/min` (equivalent to 7.5 percentage points per hour).
-- **Minimum Delta**: `1.25` percentage points increase over the window.
-- **Window Limit**: A minimum of 8 minutes (`USAGE_MIN_VELOCITY_WINDOW_SECONDS=480`) of same-period history is required.
-
-### Deduplication and Cooldown
-- **Cooldown**: A warning has a cooldown of 15 minutes (`USAGE_WARNING_COOLDOWN_SECONDS=900`).
-- **Re-alert Rules**: Inside the active warning state, a new alert is allowed after the cooldown only if:
-  1. The warning condition became inactive (detected after 3 consecutive below-threshold samples) and later crossed the threshold again.
-  2. Weekly usage increased by at least `2.00` percentage points (`USAGE_WARNING_REALERT_DELTA_PP`) since the last warned value.
-  3. Current velocity is at least `1.5` times (`USAGE_WARNING_REALERT_VELOCITY_RATIO`) the last warned velocity.
-
-### Daily Replenishment
-Poke usage drops by approximately 14–15 percentage points daily during normal replenishment.
-- **Reset Tolerance**: Any drop greater than `0.25` percentage points (`USAGE_RESET_DROP_TOLERANCE_PP`) is treated as normal replenishment.
-- **Action**: When detected, the application clears the velocity history slice, resets the active warning flag, and updates the billing cycle reset timestamp without triggering warnings.
+The monitor calculates weekly usedPercent rate changes (velocity in percentage points per minute) over a rolling 10-minute window.
+- **Warning Title**: `⚠️ Poke Usage Rising Quickly`
+- **Rate Threshold**: `0.125 pp/min` (approx +7.5 points/hour).
+- **Minimum Delta**: `1.25` percentage points.
+- **Cooldown**: 15 minutes (`USAGE_WARNING_COOLDOWN_SECONDS=900`).
+- **Re-alert Rules**: Inside an active warning state, a new alert is sent after cooldown only if usage has increased by at least `2.00` points or velocity is `1.5` times the previous warned rate.
+- **Replenishment Reset**: Drops > `0.25` points are treated as daily replenishment, resetting the velocity slice and clearing the warning state.
 
 ---
 
-## Token Expiration Handling
+## Environment Variables
 
-If the Poke API responds with `401` or `403` status codes:
-1. The session token is treated as expired.
-2. A single alert is sent to the credit webhook telling the user to update `POKE_SESSION_TOKEN`.
-3. The app continues feature-flag checks normally.
-4. Once a request succeeds again (HTTP `200`), the alert state is cleared and a recovery message is sent.
-
----
-
-## Render Deployment Settings
-
-Configure the service on Render with the following settings:
-- **Runtime**: `Python`
-- **Build Command**: `pip install -r requirements.txt`
-- **Start Command**: `python poke_monitor.py`
-
-### Environment Variables
-| Name | Description | Default Value |
+| Name | Description | Default |
 | :--- | :--- | :--- |
 | `DISCORD_BOT_TOKEN` | Discord Bot Token | *Required* |
-| `DISCORD_STATE_CHANNEL_ID` | Private channel ID for state storage | *Required* |
+| `DISCORD_STATE_CHANNEL_ID` | Private channel ID for storing state.json | *Required* |
 | `POKE_SESSION_TOKEN` | Poke session token Cookie value | *Required* |
 | `POKE_FLAGS_PAYLOAD` | Raw request body string for flag checks | *Required* |
 | `FLAGS_WEBHOOK_URL` | Discord webhook URL for flag updates | *Required* |
-| `CREDIT_WEBHOOK_URL` | Discord webhook URL for balance warnings | *Required* |
+| `CREDIT_WEBHOOK_URL` | Discord webhook URL for balance alerts | *Required* |
+| `SOURCE_CHANNEL_ID` | Optional. Channel ID to intercept webhook messages | *None* |
+| `DESTINATION_CHANNEL_ID` | Optional. Channel ID to forward messages to | *None* |
 | `PORT` | Flask web server port | `10000` |
-| `POKE_CLIENT_VERSION` | Poke frontend client version string | `1.360.2` |
-| `FLAGS_CHECK_INTERVAL_SECONDS` | Interval for checking feature flags | `300` |
-| `USAGE_SAMPLE_INTERVAL_SECONDS` | Interval for sampling weekly usage | `60` |
-| `USAGE_NOTIFICATION_INTERVAL_SECONDS` | Interval for sending routine balance updates | `900` |
 
 ---
 
-## Discord Bot Configuration
+## Discord Bot Permissions
 
-Create a private channel for state persistence and invite the bot with these permissions:
+Configure your Bot in the Discord Developer Portal with the **Bot** tab permissions:
 - **View Channel**
 - **Read Message History**
 - **Send Messages**
 - **Attach Files**
-- **Manage Messages** *(needed to delete stale state JSON files)*
-
----
-
-## Uptime Monitoring
-
-Configure **UptimeRobot** (or a similar tool) to query the root endpoint (`GET /`) of your Render Web Service every 5 minutes to prevent the free instance from sleeping. Note that UptimeRobot does not make the local filesystem permanent; Discord remains the authoritative store.
-
----
-
-## Web API Status Endpoints
-
-- `GET /`: Returns service status.
-- `GET /health`: Returns a JSON object with execution metrics, usage percentage, velocity rate, and warning statuses without leaking credentials or secrets.
+- **Manage Messages** *(required to delete original webhook announcements)*
+- **Message Content Intent** *(Must be enabled under "Privileged Gateway Intents" on the developer portal)*
