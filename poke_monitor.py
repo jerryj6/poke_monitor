@@ -246,6 +246,22 @@ def make_request(url, data=None, headers=None, method="GET", retries=3, delay=3,
     return 500, "Max retries reached"
 
 # ---------------------------------------------------------
+# HELPER FOR DETERMINISTIC FEATURE FLAGS SORTING
+# ---------------------------------------------------------
+def sort_flags_dict(flags_dict):
+    if not isinstance(flags_dict, dict):
+        return flags_dict
+    try:
+        sorted_items = sorted(
+            flags_dict.items(),
+            key=lambda x: x[1].get("metadata", {}).get("id", 0) if isinstance(x[1], dict) else 0,
+            reverse=True
+        )
+        return dict(sorted_items)
+    except Exception:
+        return flags_dict
+
+# ---------------------------------------------------------
 # DISCORD STATE STORAGE
 # ---------------------------------------------------------
 def get_state_from_discord(config):
@@ -298,6 +314,9 @@ def save_state_to_discord(config, state_dict, old_msg_id=None):
     url = f"https://discord.com/api/v10/channels/{config.discord_state_channel_id}/messages"
     auth = f"Bot {config.discord_bot_token}"
 
+    if "last_flags" in state_dict and isinstance(state_dict["last_flags"], dict):
+        state_dict["last_flags"] = sort_flags_dict(state_dict["last_flags"])
+
     state_dict["updated_at"] = get_iso_now()
     serialized_state = json.dumps(state_dict, indent=2)
 
@@ -341,6 +360,9 @@ def save_state_to_discord(config, state_dict, old_msg_id=None):
 # LOCAL CACHE
 # ---------------------------------------------------------
 def save_state_locally(config, state_dict):
+    if "last_flags" in state_dict and isinstance(state_dict["last_flags"], dict):
+        state_dict["last_flags"] = sort_flags_dict(state_dict["last_flags"])
+
     tmp_path = config.local_state_path + ".tmp"
     try:
         with open(tmp_path, "w") as f:
