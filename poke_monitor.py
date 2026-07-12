@@ -1023,7 +1023,6 @@ class PokeMonitorBot(commands.Bot):
         print("[Monitor] Shutting down Discord Bot...")
         check_usage_loop_task.cancel()
         check_flags_loop_task.cancel()
-        checkpoint_loop_task.cancel()
         
         with state_lock:
             if remote_state_dirty:
@@ -1064,8 +1063,6 @@ async def on_ready():
         check_usage_loop_task.start()
     if not check_flags_loop_task.is_running():
         check_flags_loop_task.start()
-    if not checkpoint_loop_task.is_running():
-        checkpoint_loop_task.start()
 
     with health_lock:
         health_status["monitorRunning"] = True
@@ -1228,12 +1225,7 @@ async def check_flags_loop_task():
         with health_lock:
             health_status["lastError"] = str(e)
 
-@tasks.loop(seconds=900)
-async def checkpoint_loop_task():
-    try:
-        await asyncio.to_thread(save_state_to_discord, config_instance, state, canonical_msg_id)
-    except Exception as e:
-        print(f"[Task] Error in checkpoint loop: {e}", file=sys.stderr)
+
 
 # ---------------------------------------------------------
 # FLASK WEB ENDPOINTS
