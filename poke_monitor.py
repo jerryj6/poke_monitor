@@ -299,7 +299,7 @@ def save_state_to_discord(config, state_dict, old_msg_id=None):
     auth = f"Bot {config.discord_bot_token}"
 
     state_dict["updated_at"] = get_iso_now()
-    serialized_state = json.dumps(state_dict, indent=2, sort_keys=True)
+    serialized_state = json.dumps(state_dict, indent=2)
 
     headers = {
         "Authorization": auth,
@@ -344,7 +344,7 @@ def save_state_locally(config, state_dict):
     tmp_path = config.local_state_path + ".tmp"
     try:
         with open(tmp_path, "w") as f:
-            json.dump(state_dict, f, indent=2, sort_keys=True)
+            json.dump(state_dict, f, indent=2)
         os.replace(tmp_path, config.local_state_path)
     except Exception as e:
         print(f"[State] Error saving local cache: {e}", file=sys.stderr)
