@@ -573,7 +573,7 @@ def format_balance_embed(status, body):
     bar = "█" * min(filled, bar_len) + "░" * max(0, bar_len - filled)
     reset_time_str = format_duration(resets_at)
 
-    weekly_line = f"Weekly: **{pct:.2f}%**"
+    weekly_line = f"Limit: **{pct:.2f}%**"
     reset_line = f"Resets in *{reset_time_str}*"
     description = (
         f"{fake_center(weekly_line, 4)}\n"
@@ -1000,7 +1000,7 @@ def run_usage_and_balance_sync(config):
                 filled = int(round((pct / 100.0) * 22))
                 bar = "█" * min(filled, 22) + "░" * max(0, 22 - filled)
                 reset_time_str = format_duration(resets_at)
-                weekly_line = f"Weekly: **{pct:.2f}%**"
+                weekly_line = f"Limit: **{pct:.2f}%**"
                 reset_line = f"Resets in *{reset_time_str}*"
                 description = (
                     f"{fake_center(weekly_line, 4)}\n"
