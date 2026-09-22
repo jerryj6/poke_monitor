@@ -1,9 +1,14 @@
 .env
+.env.*
+!.env.example
 config.json
 state.json
 *.tmp
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+venv/
 .DS_Store
-stderr.log
-stdout.log
+*.log
+*.pem
+*.key

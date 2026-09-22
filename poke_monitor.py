@@ -1261,28 +1261,14 @@ def index():
 
 @app.route("/health")
 def health():
+    # Public endpoint: never expose account usage, bot identity, or raw errors.
     with health_lock:
-        # Check websocket status if bot is ready
-        ws_status = "disconnected"
-        bot_user = None
-        bot_id = None
-        guild_count = 0
-        
-        if bot.is_ready():
-            ws_status = "connected"
-            bot_user = str(bot.user)
-            bot_id = bot.user.id
-            guild_count = len(bot.guilds)
-
-        hs = health_status.copy()
-        hs.update({
-            "discord": ws_status,
-            "botUser": bot_user,
-            "botId": bot_id,
-            "guildCount": guild_count,
-            "changelogForwardingEnabled": state.get("changelog_forwarding_enabled", True)
+        return jsonify({
+            "service": health_status["service"],
+            "webServer": "online",
+            "monitorRunning": health_status["monitorRunning"],
+            "discord": "connected" if bot.is_ready() else "disconnected",
         })
-        return jsonify(hs)
 
 # ---------------------------------------------------------
 # STARTUP ENTRY POINT

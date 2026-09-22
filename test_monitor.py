@@ -5,6 +5,7 @@ import time
 import os
 import sys
 import datetime
+import tempfile
 
 # Set up dummy environment variables before importing poke_monitor
 os.environ["DISCORD_BOT_TOKEN"] = "mock_bot_token"
@@ -26,6 +27,26 @@ class TestPokeMonitorCombined(unittest.TestCase):
         poke_monitor.state = poke_monitor.init_fresh_state()
         poke_monitor.canonical_msg_id = None
         poke_monitor.remote_state_dirty = False
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        poke_monitor.config_instance.local_state_path = os.path.join(self.temp_dir.name, "state.json")
+        # Every test is offline, including indirect state uploads and recovery alerts.
+        for method in ("get", "post", "delete"):
+            patcher = patch(f"poke_monitor.requests.{method}")
+            mock_request = patcher.start()
+            mock_request.return_value.status_code = 200
+            mock_request.return_value.json.return_value = {"id": "mock-state-message"}
+            self.addCleanup(patcher.stop)
+
+    def test_health_does_not_expose_private_runtime_data(self):
+        with patch.dict(poke_monitor.health_status, {
+            "currentWeeklyUsagePercent": 51.5,
+            "lastError": "private diagnostic with a credential",
+        }), patch.object(poke_monitor.bot, "is_ready", return_value=True):
+            response = poke_monitor.app.test_client().get("/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(set(response.json), {"service", "webServer", "monitorRunning", "discord"})
+        self.assertEqual(response.json["discord"], "connected")
 
     def test_schema_migration(self):
         legacy_state = {
