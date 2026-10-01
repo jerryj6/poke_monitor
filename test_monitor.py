@@ -274,6 +274,8 @@ class TestPokeMonitorCombined(unittest.TestCase):
     @patch("poke_monitor.requests.post")
     @patch("poke_monitor.make_request")
     def test_token_expiration_warning_flow(self, mock_make_request, mock_post):
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {"id": "mock-state-message"}
         mock_make_request.return_value = (401, "Unauthorized")
 
         poke_monitor.state["token_expiry_notified"] = False

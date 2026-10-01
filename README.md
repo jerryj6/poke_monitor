@@ -15,7 +15,7 @@ This is an unofficial project, unaffiliated with Poke or Discord. It uses Poke w
 
 ## Quick start
 
-Use Python 3.12 or 3.13.
+Use Python 3.12, 3.13, or 3.14.
 
 ```sh
 git clone https://github.com/jerryj6/poke_monitor.git
@@ -93,7 +93,7 @@ For a Render Python web service, use:
 - Build command: `pip install -r requirements.txt`
 - Start command: `python poke_monitor.py`
 - Health check path: `/health`
-- Python version: a supported 3.12 or 3.13 release
+- Python version: a supported 3.12, 3.13, or 3.14 release
 
 Configure the required environment values through the hosting dashboard. Run one instance: multiple instances can duplicate alerts and compete over state. Start the Python entry point directly; importing the Flask app through a WSGI server does not start the Discord bot or monitoring loops.
 
@@ -113,6 +113,6 @@ Notifications intentionally share usage and flag data with the configured Discor
 python -m unittest discover -v
 ```
 
-Tests use mock HTTP calls and temporary state files; no live credentials are needed. GitHub Actions runs the suite on Python 3.12 and 3.13. Coverage includes state migration/recovery, notification splitting, usage warning behavior, expired-token handling, and health endpoint privacy.
+Tests use mock HTTP calls and temporary state files; no live credentials are needed. GitHub Actions runs the suite on Python 3.12, 3.13, and 3.14. Coverage includes state migration/recovery, notification splitting, usage warning behavior, expired-token handling, and health endpoint privacy.
 
 When contributing, include a focused description and relevant tests. Use synthetic data in fixtures and issue reports.
